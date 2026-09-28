@@ -16,5 +16,9 @@
             .url = "https://github.com/assimp/assimp/archive/v5.4.0.tar.gz",
             .hash = "N-V-__8AACoWewhH5OBlKGMhvR9XlApEzxGY07K8ZCn7TlH9",
         },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c.git#0944784e197e419433a21d4b28bfc65e48e7d514",
+            .hash = "translate_c-0.0.0-Q_BUWo5NBwBs3K0a-B1XbxEF3gFdTb75VgOE0FL-2qKL",
+        },
     },
 }

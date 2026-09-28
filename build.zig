@@ -1,14 +1,44 @@
 const std = @import("std");
+const Translator = @import("translate_c").Translator;
 
 pub fn build(b: *std.Build) !void {
+    const assimp_upstream = b.dependency("assimp", .{});
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const assimp_lib = try buildUpstream(b, assimp_upstream, target, optimize);
+    buildExamples(b, assimp_lib, assimp_upstream, target, optimize);
+
+    const translate_c = b.dependency("translate_c", .{});
+    const translated_assimp: Translator = .init(translate_c, .{
+        .c_source_file = b.path("src/assimp.h"),
+        .target = target,
+        .optimize = optimize,
+        .default_init = true,
+    });
+    translated_assimp.linkLibrary(assimp_lib);
+
+    // hack to expose the translated module to users. see b.addModule() implementation
+    const gop = try b.modules.getOrPutValue(
+        b.graph.arena,
+        b.graph.dupeString("assimp"),
+        translated_assimp.mod,
+    );
+    if (gop.found_existing) {
+        @panic("A module with the name assimp has already been added to the package. Consider creating a private module with std.Build.createModule");
+    }
+}
+
+fn buildUpstream(
+    b: *std.Build,
+    assimp_upstream: *std.Build.Dependency,
+    target: std.Build.ResolvedTarget,
+    optimize: std.lang.Optimize,
+) !*std.Build.Step.Compile {
     const formats = b.option([]const u8, "formats", "Comma separated list of enabled formats or \"all\", for example: STL,3MF,Obj") orelse "";
     const use_double_precision = b.option(bool, "double", "All data will be stored as double values") orelse false;
-    const assimp = b.dependency("assimp", .{});
 
     const lib = b.addLibrary(.{
-        .name = "assimp",
+        .name = "assimp_c",
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
@@ -29,30 +59,30 @@ pub fn build(b: *std.Build) !void {
 
     const config_h = b.addConfigHeader(
         .{
-            .style = .{ .cmake = assimp.path("include/assimp/config.h.in") },
+            .style = .{ .cmake = assimp_upstream.path("include/assimp/config.h.in") },
             .include_path = "assimp/config.h",
         },
         .{ .ASSIMP_DOUBLE_PRECISION = use_double_precision },
     );
     lib.root_module.addConfigHeader(config_h);
-    lib.root_module.addIncludePath(assimp.path("include"));
+    lib.root_module.addIncludePath(assimp_upstream.path("include"));
     lib.root_module.addIncludePath(b.path("include"));
 
-    lib.root_module.addIncludePath(assimp.path(""));
-    lib.root_module.addIncludePath(assimp.path("contrib"));
-    lib.root_module.addIncludePath(assimp.path("code"));
-    lib.root_module.addIncludePath(assimp.path("contrib/pugixml/src/"));
-    lib.root_module.addIncludePath(assimp.path("contrib/rapidjson/include"));
-    lib.root_module.addIncludePath(assimp.path("contrib/unzip"));
-    lib.root_module.addIncludePath(assimp.path("contrib/zlib"));
-    lib.root_module.addIncludePath(assimp.path("contrib/openddlparser/include"));
-    lib.root_module.addIncludePath(assimp.path("contrib/utf8cpp/source"));
+    lib.root_module.addIncludePath(assimp_upstream.path(""));
+    lib.root_module.addIncludePath(assimp_upstream.path("contrib"));
+    lib.root_module.addIncludePath(assimp_upstream.path("code"));
+    lib.root_module.addIncludePath(assimp_upstream.path("contrib/pugixml/src/"));
+    lib.root_module.addIncludePath(assimp_upstream.path("contrib/rapidjson/include"));
+    lib.root_module.addIncludePath(assimp_upstream.path("contrib/unzip"));
+    lib.root_module.addIncludePath(assimp_upstream.path("contrib/zlib"));
+    lib.root_module.addIncludePath(assimp_upstream.path("contrib/openddlparser/include"));
+    lib.root_module.addIncludePath(assimp_upstream.path("contrib/utf8cpp/source"));
 
     lib.root_module.addCMacro("RAPIDJSON_HAS_STDSTRING", "1");
 
     lib.installConfigHeader(config_h);
     lib.installHeadersDirectory(
-        assimp.path("include"),
+        assimp_upstream.path("include"),
         "",
         .{ .include_extensions = &.{ ".h", ".inl", ".hpp" } },
     );
@@ -64,14 +94,14 @@ pub fn build(b: *std.Build) !void {
     );
 
     lib.root_module.addCSourceFiles(.{
-        .root = assimp.path(""),
+        .root = assimp_upstream.path(""),
         .files = &sources.common,
         .flags = &.{},
     });
 
     inline for (comptime std.meta.declarations(sources.libraries)) |ext_lib| {
         lib.root_module.addCSourceFiles(.{
-            .root = assimp.path(""),
+            .root = assimp_upstream.path(""),
             .files = &@field(sources.libraries, ext_lib),
             .flags = &.{},
         });
@@ -109,7 +139,7 @@ pub fn build(b: *std.Build) !void {
 
         if (enabled) {
             lib.root_module.addCSourceFiles(.{
-                .root = assimp.path(""),
+                .root = assimp_upstream.path(""),
                 .files = &@field(sources.formats, format_file),
                 .flags = &.{},
             });
@@ -130,8 +160,16 @@ pub fn build(b: *std.Build) !void {
         lib.root_module.addCMacro(define_exporter, "");
     }
 
-    b.installArtifact(lib);
+    return lib;
+}
 
+fn buildExamples(
+    b: *std.Build,
+    assimp_lib: *std.Build.Step.Compile,
+    assimp_upstream: *std.Build.Dependency,
+    target: std.Build.ResolvedTarget,
+    optimize: std.lang.Optimize,
+) void {
     const example_cpp = b.addExecutable(.{
         .name = "static-example-cpp",
         .root_module = b.createModule(.{
@@ -143,12 +181,12 @@ pub fn build(b: *std.Build) !void {
         .files = &[_][]const u8{"src/example.cpp"},
         .flags = &[_][]const u8{"-std=c++17"},
     });
-    example_cpp.root_module.linkLibrary(lib);
+    example_cpp.root_module.linkLibrary(assimp_lib);
     example_cpp.root_module.link_libc = true;
     if (target.result.abi != .msvc) {
         example_cpp.root_module.link_libcpp = true;
     }
-    example_cpp.root_module.addIncludePath(assimp.path("include"));
+    example_cpp.root_module.addIncludePath(assimp_upstream.path("include"));
     if (target.result.os.tag == .windows) {
         example_cpp.root_module.addCMacro("_WINDOWS", "");
         example_cpp.root_module.addCMacro("_WIN32", "");
@@ -166,9 +204,9 @@ pub fn build(b: *std.Build) !void {
         .files = &[_][]const u8{"src/example.c"},
         .flags = &[_][]const u8{"-std=c99"},
     });
-    example_c.root_module.linkLibrary(lib);
+    example_c.root_module.linkLibrary(assimp_lib);
     example_c.root_module.link_libc = true;
-    example_c.root_module.addIncludePath(assimp.path("include"));
+    example_c.root_module.addIncludePath(assimp_upstream.path("include"));
     if (target.result.os.tag == .windows) {
         example_c.root_module.addCMacro("_WINDOWS", "");
         example_c.root_module.addCMacro("_WIN32", "");

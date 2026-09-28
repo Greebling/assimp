@@ -72,7 +72,7 @@ pub fn build(b: *std.Build) !void {
     inline for (comptime std.meta.declarations(sources.libraries)) |ext_lib| {
         lib.root_module.addCSourceFiles(.{
             .root = assimp.path(""),
-            .files = &@field(sources.libraries, ext_lib.name),
+            .files = &@field(sources.libraries, ext_lib),
             .flags = &.{},
         });
     }
@@ -88,8 +88,8 @@ pub fn build(b: *std.Build) !void {
         }
 
         var found: bool = false;
-        inline for (comptime std.meta.declarations(sources.formats)) |format_files| {
-            if (std.mem.eql(u8, format_files.name, format)) {
+        inline for (comptime std.meta.declarations(sources.formats)) |format_file| {
+            if (std.mem.eql(u8, format_file, format)) {
                 try enabled_formats.insert(format);
                 found = true;
             }
@@ -97,25 +97,25 @@ pub fn build(b: *std.Build) !void {
         if (!found) {
             std.debug.print("Unsupported format: {s}\n", .{format});
             std.debug.print("Supported formats:\n", .{});
-            inline for (comptime std.meta.declarations(sources.formats)) |format_files| {
-                std.debug.print("    {s}\n", .{format_files.name});
+            inline for (comptime std.meta.declarations(sources.formats)) |format_file| {
+                std.debug.print("    {s}\n", .{format_file});
             }
             return error.InvalidFormat;
         }
     }
 
-    inline for (comptime std.meta.declarations(sources.formats)) |format_files| {
-        const enabled = enable_all or enabled_formats.contains(format_files.name);
+    inline for (comptime std.meta.declarations(sources.formats)) |format_file| {
+        const enabled = enable_all or enabled_formats.contains(format_file);
 
         if (enabled) {
             lib.root_module.addCSourceFiles(.{
                 .root = assimp.path(""),
-                .files = &@field(sources.formats, format_files.name),
+                .files = &@field(sources.formats, format_file),
                 .flags = &.{},
             });
         } else {
-            const define_importer = b.fmt("ASSIMP_BUILD_NO_{f}_IMPORTER", .{fmtUpperCase(format_files.name)});
-            const define_exporter = b.fmt("ASSIMP_BUILD_NO_{f}_EXPORTER", .{fmtUpperCase(format_files.name)});
+            const define_importer = b.fmt("ASSIMP_BUILD_NO_{f}_IMPORTER", .{fmtUpperCase(format_file)});
+            const define_exporter = b.fmt("ASSIMP_BUILD_NO_{f}_EXPORTER", .{fmtUpperCase(format_file)});
 
             lib.root_module.addCMacro(define_importer, "");
             lib.root_module.addCMacro(define_exporter, "");

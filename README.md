@@ -1,6 +1,6 @@
 # OpenAssetImporter Library Binding for Zig
 
-This repo packages [Assimp](https://github.com/assimp/assimp) 5.4.0 for the Zig build system (requires Zig 0.16.0+).
+This repo packages [Assimp](https://github.com/assimp/assimp) 5.4.0 for the Zig build system (requires Zig 0.17.0+).
 
 ## Add the dependency
 
